@@ -601,22 +601,7 @@ void thread_sleep(int64_t ticks){
 
 	struct thread *t = thread_current();
 
-	ASSERT(t != idle_thread); // 바꿀까
-
-	// if(t == idle_thread){
-	// 	ASSERT(0);
-	// }
-	// else{
-	// 	enum intr_level old_level;
-	// 	old_level = intr_disable();
-
-	// 	update_next_tick_to_awake(t->wakeup_tick = ticks);
-
-	// 	list_push_back(&sleep_list, &t->elem);
-	// 	thread_block();
-
-	// 	intr_set_level(old_level);
-	// }
+	ASSERT(t != idle_thread); 
 
 	enum intr_level old_level;
 	old_level = intr_disable();
