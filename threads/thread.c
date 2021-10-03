@@ -214,6 +214,11 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	//project 1 - priority
+	if(t->priority > thread_current()->priority){
+		thread_yield();
+	}
+
 	return tid;
 }
 
@@ -247,7 +252,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	//project 1 - priority
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -309,8 +316,11 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	if (curr != idle_thread){
+		// list_push_back (&ready_list, &curr->elem);
+		//project 1 - priority
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
+	}
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -318,7 +328,21 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	//project 1 - priority donation
+	thread_current ()-> init_priority = new_priority;
+	
+	refresh_priority();
+	test_max_priority();
+
+	//project 1 - priority
+	// if(!thread_mlfqs){
+	// 	int previious_priority = thread_current()->priority;
+	// 	thread_current()->priority = new_priority;
+
+	// 	if(thread_current()->priority < previious_priority){
+	// 		test_max_priority();
+	// 	}
+	// }
 }
 
 /* Returns the current thread's priority. */
@@ -416,6 +440,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	//project 1- priority donation
+	t->init_priority = priority;
+	t->wait_on_lock = NULL;
+	list_init(&t->donations);
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -641,5 +671,76 @@ void thread_awake(int64_t ticks){
 			sleeping = list_next(sleeping);
 			update_next_tick_to_awake(th->wakeup_tick);
 		}
+	}
+}
+
+//project 1 - priority
+void
+test_max_priority(void){
+	struct thread *cp = thread_current();
+	struct thread *first_thread;
+
+	if(list_empty(&ready_list))
+		return;
+
+	first_thread = list_entry(list_front(&ready_list), struct thread, elem);
+
+	if(cp->priority < first_thread->priority)
+		thread_yield();
+}
+
+//project 1 - priority
+bool
+cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+
+	return thread_a->priority > thread_b->priority;
+}
+
+//project 1 - priority donation
+bool thread_compare_donate_priority(const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
+	struct thread *thread_l = list_entry(l, struct thread, donation_elem);
+	struct thread *thread_s = list_entry(s, struct thread, donation_elem);
+
+	return thread_l->priority > thread_s->priority;
+}
+
+//project 1 - priority donation
+void donate_priority(void) {
+	int depth;
+	struct thread *cur = thread_current();
+
+	for (depth=0; depth <8; depth++) {
+		if (!cur->wait_on_lock) break;
+			struct thread *holder = cur->wait_on_lock->holder;
+			holder->priority = cur->priority;
+			cur = holder;
+	}
+}
+
+//project 1 - priority donation
+void remove_with_lock(struct lock *lock) {
+	struct list_elem *e;
+	struct thread *cur = thread_current();
+
+	for (e=list_begin(&cur->donations); e!=list_end(&cur->donations); e=list_next(e)) {
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		if(t->wait_on_lock == lock)
+			list_remove(&t->donation_elem);
+	}
+}
+
+//project 1 - priority donation
+void refresh_priority(void) {
+	struct thread *cur = thread_current();
+	cur -> priority = cur->init_priority;
+
+	if(!list_empty(&cur->donations)) {
+		list_sort(&cur->donations, thread_compare_donate_priority, NULL);
+
+		struct thread *front = list_entry(list_front(&cur->donations), struct thread, donation_elem);
+		if(front->priority > cur->priority)
+			cur->priority = front->priority;
 	}
 }
