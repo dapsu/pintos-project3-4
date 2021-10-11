@@ -128,6 +128,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	// thread_exit ();
 }
 
+void check_address(const uint64_t *uaddr) {
+
+	struct thread *cur = thread_current();
+	if	(uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4_get_page(cur->pml4, uaddr) == NULL)
+	{
+		exit(-1);
+	}
+}
+
 int write(int fd, const void *buffer, unsigned size) {
 	if(fd==1){
 		putbuf(buffer, size);
