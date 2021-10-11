@@ -50,6 +50,10 @@ process_create_initd (const char *file_name) {
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	// Project 2-1. Pass args - extract program name
+	char *save_ptr;
+	strtok_r(file_name, " ", &save_ptr);
+
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -176,18 +180,94 @@ process_exec (void *f_name) {
 	/* We first kill the current context */
 	process_cleanup ();
 
+	// project2- argument parsing
+	char *argv[30];
+	int argc = 0;
+
+	char *token, *save_ptr;
+	token = strtok_r(file_name, " ", &save_ptr);
+
+	while (token != NULL) {
+		argv[argc] = token;
+		token = strtok_r(NULL, " ", &save_ptr);
+		argc++;
+	}
+
+
+
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
+
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
 	if (!success)
+	{
+		palloc_free_page(file_name);
 		return -1;
+	}
+
+	// Project 2. Pass args - load arguments onto the user stack
+	void **rspp = &_if.rsp;
+
+	load_userStack(argv, argc, rspp);
+
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, 1);
+
+
+	_if.R.rdi = argc;
+	_if.R.rsi = (uint64_t)*rspp + sizeof(void *);
+
+	palloc_free_page (file_name);
 
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
+
+// project2 - argument parsing
+// Load user stack with arguments
+void load_userStack(char **argv, int argc, void **rspp) {
+	// 1. Save argument strings (character by character)
+	for (int i = argc - 1; i >= 0; i--) // 인자 개수 기준 내림차순
+	{
+		int N = strlen(argv[i]); // 각 인자의 길이(argv[i]의 길이) 
+		for (int j = N; j >= 0; j--)
+		{
+			char individual_character = argv[i][j]; // 각 인자의 각 요소 넣기 ('n', 'a', 'm', 'e')
+			(*rspp)--; // 1 byte씩 내리기
+			**(char **)rspp = individual_character; 
+			//*(char *)(_if.rsp) = individual_character를 해주고 싶으니까
+			// char * 형으로 캐스팅한 다음, * 포인터를 통해 해당 값에 접근
+		}
+		argv[i] = *(char **)rspp; // push this address too
+		// 각 인자별 첫 글자의 스택 주소 저장(나중에 쓸 "name"의 첫 주소 저장)
+	}
+
+	// word-align padding
+	int pad = (int)*rspp % 8;
+	for (int k = 0; k < pad; k++) {
+		(*rspp)--;
+		**(uint8_t **)rspp = (uint8_t)0; 
+		// 1 byte씩 아래로 이동하면서, 각 칸의 내용을 0으로 초기화
+	}
+
+	// pointers to the argument strings
+	size_t PTR_SIZE = sizeof(char *);
+
+	(*rspp) -= PTR_SIZE;
+	**(char ***)rspp = (char *)0;
+
+	for(int i = argc -1;  i >=0; i--) {
+		(*rspp) -= PTR_SIZE;
+		**(char ***)rspp = argv[i]; // 해당 위치에 argv[i] 기입(i번째 arg의 주소)
+	}
+
+	// Return address를 0으로 초기화(push a fake 'return address')
+	(*rspp) -= PTR_SIZE;
+	**(void ***)rspp = (void *)0;
+}
+
+
 
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -204,6 +284,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	thread_sleep(250);
+
 	return -1;
 }
 

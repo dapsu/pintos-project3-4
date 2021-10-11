@@ -680,7 +680,8 @@ test_max_priority(void){
 	struct thread *cp = thread_current();
 	struct thread *first_thread;
 
-	if(list_empty(&ready_list))
+	// project2 
+	if(intr_context() || list_empty(&ready_list))
 		return;
 
 	first_thread = list_entry(list_front(&ready_list), struct thread, elem);
