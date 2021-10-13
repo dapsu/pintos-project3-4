@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 #include "threads/interrupt.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -27,6 +28,10 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+// syscall
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES *(1 << 9) // Limit fdIdx
 
 /* A kernel thread or user process.
  *
@@ -101,7 +106,25 @@ struct thread {
 	struct list donations;
 	struct list_elem donation_elem;
 
+	int exit_status;			// used to deliver child exit_status to parent
 
+	// fork syscall
+	struct intr_frame parent_if; // to preserve my current intr_frame and pass it down to child in fork('parent_if' in child's perspective)
+	struct semaphore fork_sema;	 // parent wait (process_wait) until child fork completes (__do_fork)
+	struct semaphore free_sema;	 // Postpone child termination (process_exit) until parent receives its exit_status in 'wait' (process_wait)
+	struct semaphore wait_sema;  // 자식 이기는 부모는 없다
+	struct list child_list;		// keep children
+	struct list_elem child_elem;
+
+	// file descripter
+	struct file **fdTable; 	// allocation in threac_create (thread.c)
+	int fdIdx; // an index of an open spot in fdTable
+	// 2-5 deny exec writes
+	struct file *running; // executable ran by current process (process.c load, process_exit)
+	// 2-extra - count the number of open stdin/stdout
+	// dup2 may copy stdin or stdout; stdin or stdout is not really closed until these counts goes 0
+	int stdin_count;
+	int stdout_count;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */

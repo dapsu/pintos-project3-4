@@ -198,7 +198,24 @@ thread_create (const char *name, int priority,
 
 	/* Initialize thread. */
 	init_thread (t, name, priority);
+
+	// 2-4 File descriptor
+	//t->fdTable = palloc_get_page(PAL_ZERO); // multi-oom : need more pages to accomodate 10 stacks of 126 opens
+	t->fdTable = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (t->fdTable == NULL)
+		return TID_ERROR;
+	t->fdIdx = 2; // 0 : stdin, 1 : stdout
+	// 2-extra
+	t->fdTable[0] = 1; // dummy values to distinguish fd 0 and 1 from NULL
+	t->fdTable[1] = 2;
+	t->stdin_count = 1;
+	t->stdout_count = 1; 
+
 	tid = t->tid = allocate_tid ();
+
+	// 현재 스레드의 child_list에 넣기
+	struct thread *cur = thread_current();
+	list_push_back(&cur->child_list, &t->child_elem);
 
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
@@ -446,6 +463,14 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->wait_on_lock = NULL;
 	list_init(&t->donations);
 
+	// 2-3 Syscalls
+	list_init(&t->child_list);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->free_sema, 0);
+	
+	// 2-5
+	t->running = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
