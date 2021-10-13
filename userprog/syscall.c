@@ -73,7 +73,7 @@ syscall_init (void) {
 
 /* The main system call interface */
 void
-syscall_handler (struct intr_frame *f UNUSED) {
+syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
 
 	char *fn_copy;
@@ -94,7 +94,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			exit(-1);
 		break;
 	case SYS_WAIT:
-		f->R.rax = process_wait(f->R.rdi);
+		f->R.rax = wait(f->R.rdi);
 		break;
 	case SYS_CREATE:
 		f->R.rax = create(f->R.rdi, f->R.rsi);
@@ -171,7 +171,6 @@ void exit(int status)
 }
 
 tid_t fork(const char *thread_name, struct intr_frame *f) {
-	printf('utygihjkmasdkjfaoes\n');
 	return process_fork(thread_name, f);
 }
 

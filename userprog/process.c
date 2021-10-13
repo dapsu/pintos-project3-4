@@ -100,11 +100,9 @@ tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 
 	struct thread *cur = thread_current();
-	printf('utygihjkmasdkjfaoes\n');
 
 	// 1. current thread의 멤버 parent_if에 인자로 받은 if_ 넣어주기
 	memcpy(&cur->parent_if, if_, sizeof(struct intr_frame));
-	printf('utygihjkmasdkjfaoes\n');
 
 	// 2. 자식 스레드 생성
 	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, cur);
@@ -114,10 +112,7 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	// 3. child_list 에서 tid 가진 스레드 찾기
 	struct thread *child = get_child_with_pid(tid);
 
-	printf('%%%%%%%%%%%%%%%%%%%%%%%%%%%asdkjfaoes\n');
-
 	sema_down(&child->fork_sema); // 자식이 up해줄때까지 부모 block 상태
-	printf('%%%92048350349-03940%asdkjfaoes\n');
 
 	if (child->exit_status == -1)
 		return TID_ERROR;
@@ -184,6 +179,7 @@ __do_fork (void *aux) {
 	struct thread *current = thread_current ();
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if;
+	parent_if = &parent->parent_if;
 	bool succ = true;
 
 	/* 1. Read the cpu context to local stack. */
