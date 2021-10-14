@@ -72,8 +72,7 @@ syscall_init (void) {
 }
 
 /* The main system call interface */
-void
-syscall_handler (struct intr_frame *f) {
+void syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
 
 	char *fn_copy;
