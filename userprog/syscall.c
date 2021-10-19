@@ -12,6 +12,7 @@
 #include "filesys/file.h"
 #include "threads/palloc.h"
 #include "userprog/process.h"
+#include "vm/vm.h"
 
 
 void syscall_entry (void);
@@ -154,10 +155,10 @@ bool remove(const char *file) {
 void check_address(const uint64_t *uaddr) {
 
 	struct thread *cur = thread_current();
-	if	(uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4_get_page(cur->pml4, uaddr) == NULL)
-	{
+	if	(uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4_get_page(cur->pml4, uaddr) == NULL) {
 		exit(-1);
 	}
+	return spt_find_page(&thread_current()->spt, uaddr);
 }
 
 void exit(int status)
