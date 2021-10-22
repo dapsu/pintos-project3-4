@@ -16,6 +16,7 @@ void load_userStack(char **argv, int argc, void **rspp);
 bool install_page (void *upage, void *kpage, bool writable);
 bool lazy_load_segment (struct page *page, void *aux);
 // bool setup_stack (struct intr_frame *if_);
+struct file *process_get_file(int fd);
 
 // project3 | lazy load를 위해 필요한 정보 구조체
 struct container {

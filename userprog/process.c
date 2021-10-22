@@ -443,7 +443,6 @@ static void process_cleanup (void) {
 	struct thread *curr = thread_current ();
 
 #ifdef VM
-	// supplemental_page_table_kill (&curr->spt);
 	if(!hash_empty(&curr->spt.pages))
 		supplemental_page_table_kill (&curr->spt);
 #endif
@@ -692,6 +691,16 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 
 	/* It's okay. */
 	return true;
+}
+
+struct file *process_get_file(int fd) {
+	struct thread *curr = thread_current();
+	struct file* fd_file = curr->fdTable[fd];
+
+	if(fd_file)
+		return fd_file;
+	else
+		return	NULL;
 }
 
 #ifndef VM

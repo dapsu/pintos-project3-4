@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "intrinsic.h"
-
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/palloc.h"
@@ -44,6 +43,8 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 int dup2(int oldfd, int newfd);
+void* mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
 
 /* System call.
  *
@@ -132,13 +133,17 @@ void syscall_handler (struct intr_frame *f) {
 	case SYS_DUP2:
 		f->R.rax = dup2(f->R.rdi, f->R.rsi);
 		break;
+	 // for VM
+	case SYS_MMAP:
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+		break;
+	case SYS_MUNMAP:
+		munmap(f->R.rdi);
+		break;
 	default:
 		exit(-1);
 		break;
 	}
-
-	// printf ("system call!\n");
-	// thread_exit ();
 }
 
 // pintos 프로그램 종료 
@@ -427,4 +432,41 @@ int dup2(int oldfd, int newfd)
 	close(newfd);
 	fdt[newfd] = fileobj;
 	return newfd;
+}
+
+// for Memory Mapped Files
+/*
+ * addr: 매핑을 시작할 주소(page 단위)
+ * fd: 프로세스의 가상 주소 공간에 매핑할 파일
+ * length: 매핑할 파일의 길이
+ */
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+
+    if (offset % PGSIZE != 0) {
+        return NULL;
+    }
+
+    if (pg_round_down(addr) != addr || is_kernel_vaddr(addr) || addr == NULL || (long long)length <= 0)
+        return NULL;
+    
+    if (fd == 0 || fd == 1)
+        exit(-1);
+    
+    // vm_overlap
+    if (spt_find_page(&thread_current()->spt, addr))
+        return NULL;
+
+    struct file *target = process_get_file(fd);
+	// struct file *target = find_file_by_fd(fd);
+
+    if (target == NULL)
+        return NULL;
+
+    void * ret = do_mmap(addr, length, writable, target, offset);
+
+    return ret;
+}
+
+void munmap (void *addr) {
+    do_munmap(addr);
 }

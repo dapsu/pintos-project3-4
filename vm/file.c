@@ -106,7 +106,7 @@ void *do_mmap (void *addr, size_t length, int writable, struct file *file, off_t
 }
 
 /* Do the munmap */
-void do_munmap (void *addr) {
+void do_munmap (void *addr) {   // 매핑된 파일의 페이지 제거
 	while (true) {
         struct page* page = spt_find_page(&thread_current()->spt, addr);
         
