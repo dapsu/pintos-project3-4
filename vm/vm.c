@@ -58,7 +58,6 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writab
 		 * TODO: and then create "uninit" page struct by calling uninit_new. You
 		 * TODO: should modify the field after calling the uninit_new. */
 		
-		// project3 | uninit_new
 		struct page* page = (struct page*)malloc(sizeof(struct page));
 
         typedef bool (*initializerFunc)(struct page *, enum vm_type, void *);
@@ -94,11 +93,11 @@ struct page *spt_find_page (struct supplemental_page_table *spt UNUSED, void *va
     struct hash_elem *e;
 
     page->va = pg_round_down(va);  // va가 가리키는 가상 페이지의 시작 포인트(오프셋이 0으로 설정된 va) 반환
-    e = hash_find(&spt->pages, &page->hash_elem);
+    e = hash_find(&spt->pages, &page->hash_elem);	// hash_elem 구조체 얻음
 
     free(page);
 
-    return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;
+    return e != NULL ? hash_entry (e, struct page, hash_elem) : NULL;	// 존재하지 않는다면 NULL 리턴
 }
 
 /* Insert PAGE into spt with validation. */
@@ -118,19 +117,39 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+    /* TODO: The policy for eviction is up to you. */
+    struct thread *curr = thread_current();
+    struct list_elem *e = start;
 
-	return victim;
+    for (start = e; start != list_end(&frame_table); start = list_next(start)) {
+        victim = list_entry(start, struct frame, frame_elem);
+        if (pml4_is_accessed(curr->pml4, victim->page->va))
+            pml4_set_accessed (curr->pml4, victim->page->va, 0);
+        else
+            return victim;
+    }
+
+    for (start = list_begin(&frame_table); start != e; start = list_next(start)) {
+        victim = list_entry(start, struct frame, frame_elem);
+        if (pml4_is_accessed(curr->pml4, victim->page->va))
+            pml4_set_accessed (curr->pml4, victim->page->va, 0);
+        else
+            return victim;
+    }
+
+    return victim;
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+	struct frame *victim = vm_get_victim();
+    /* TODO: swap out the victim and return the evicted frame. */
 
-	return NULL;
+    swap_out(victim->page);
+
+    return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -160,8 +179,12 @@ static struct frame * vm_get_frame (void) {
 }
 
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+static void vm_stack_growth (void *addr UNUSED) {
+    if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1))
+    {
+        vm_claim_page(addr);
+        thread_current()->stack_bottom -= PGSIZE;   // 스택은 위에서부터 쌓기 때문에 주소값 위치를 페이지 사이즈씩 마이너스함
+    }
 }
 
 /* Handle the fault on write_protected page */
@@ -169,6 +192,10 @@ static bool
 vm_handle_wp (struct page *page UNUSED) {
 }
 
+/*
+ * 대부분의 OS는 스택 크기에 절대적인 제한이 있음(유닉스 시스템에선 ulimit command 사용으로 사용자의 조정 제한)
+ * pintos 경우 스택 사이즈 1MB로 제한
+ */
 /* Return true on success */
 bool vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
@@ -238,16 +265,56 @@ void supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
 }
 
 /* Copy supplemental page table from src to dst */
-bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+bool supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED, 
+								   struct supplemental_page_table *src UNUSED) {
+    struct hash_iterator i;
+    hash_first (&i, &src->pages);
+    while (hash_next (&i)) {	// src의 각각의 페이지를 반복문을 통해 복사
+        struct page *parent_page = hash_entry (hash_cur (&i), struct page, hash_elem);   // 현재 해시 테이블의 element 리턴
+        enum vm_type type = page_get_type(parent_page);		// 부모 페이지의 type
+        void *upage = parent_page->va;						// 부모 페이지의 가상 주소
+        bool writable = parent_page->writable;				// 부모 페이지의 쓰기 가능 여부
+        vm_initializer *init = parent_page->uninit.init;	// 부모의 초기화되지 않은 페이지들 할당 위해 
+        void* aux = parent_page->uninit.aux;
+
+        if (parent_page->uninit.type & VM_MARKER_0) {			// 부모 페이지가 할당되어 있다면????
+            setup_stack(&thread_current()->tf);
+        }
+        else if(parent_page->operations->type == VM_UNINIT) {	// 부모 타입이 uninit인 경우
+            if(!vm_alloc_page_with_initializer(type, upage, writable, init, aux))
+                return false;
+        }
+        else {
+            if(!vm_alloc_page(type, upage, writable))
+                return false;
+            if(!vm_claim_page(upage))
+                return false;
+        }
+
+        if (parent_page->operations->type != VM_UNINIT) {   // UNIT이 아닌 모든 페이지(stack 포함)는 부모의 것을 memcpy
+            struct page* child_page = spt_find_page(dst, upage);
+            memcpy(child_page->frame->kva, parent_page->frame->kva, PGSIZE);
+        }
+    }
+    return true;
 }
 
 /* Free the resource hold by the supplemental page table */
-void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+void supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: Destroy all the supplemental_page_table hold by thread and
 	 * TODO: writeback all the modified contents to the storage. */
+	struct hash_iterator i;
+
+    hash_first (&i, &spt->pages);
+    while (hash_next (&i)) {
+        struct page *page = hash_entry (hash_cur (&i), struct page, hash_elem);
+
+        if (page->operations->type == VM_FILE) {
+            do_munmap(page->va);
+            // destroy(page);
+        }
+    }
+    hash_destroy(&spt->pages, spt_destructor);
 }
 
 // 해시 테이블 초기화할 때 해시 값을 구해주는 함수의 포인터
@@ -277,4 +344,9 @@ bool delete_page(struct hash *pages, struct page *p) {
         return true;
     else
         return false;
+}
+
+void spt_destructor(struct hash_elem *e, void* aux) {
+    const struct page *p = hash_entry(e, struct page, hash_elem);
+    free(p);
 }
