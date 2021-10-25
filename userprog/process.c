@@ -288,9 +288,6 @@ process_exec (void *f_name) {
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
-	/* We first kill the current context */
-	process_cleanup ();
-
 	// project2- argument parsing
 	char *argv[30];
 	int argc = 0;
@@ -304,6 +301,12 @@ process_exec (void *f_name) {
 		argc++;
 	}
 
+	/* We first kill the current context */
+	process_cleanup ();
+
+#ifdef VM
+	supplemental_page_table_init(&thread_current()->spt);
+#endif
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
@@ -386,13 +389,11 @@ void load_userStack(char **argv, int argc, void **rspp) {
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
-int
-process_wait (tid_t child_tid UNUSED) {
+int process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 
-	struct thread *cur = thread_current();
 	struct thread *child = get_child_with_pid(child_tid);
 
 	if (child == NULL)
@@ -438,12 +439,12 @@ process_exit (void) {
 }
 
 /* Free the current process's resources. */
-static void
-process_cleanup (void) {
+static void process_cleanup (void) {
 	struct thread *curr = thread_current ();
 
 #ifdef VM
-	supplemental_page_table_kill (&curr->spt);
+	if(!hash_empty(&curr->spt.pages))
+		supplemental_page_table_kill (&curr->spt);
 #endif
 
 	uint64_t *pml4;
@@ -648,18 +649,6 @@ done:
 	return success;
 }
 
-// // ??
-// bool check_excutable(struct file * file) {
-// 	bool res = true;
-// 	struct ELF ehdr;
-
-// 	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
-// 		|| ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024)
-// 		res = false;
-	
-// 	return res;
-// }
-
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
 static bool
@@ -702,6 +691,16 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 
 	/* It's okay. */
 	return true;
+}
+
+struct file *process_get_file(int fd) {
+	struct thread *curr = thread_current();
+	struct file* fd_file = curr->fdTable[fd];
+
+	if(fd_file)
+		return fd_file;
+	else
+		return	NULL;
 }
 
 #ifndef VM
@@ -817,7 +816,7 @@ bool install_page (void *upage, void *kpage, bool writable) {
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
 
-static bool lazy_load_segment (struct page *page, void *aux) {
+bool lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
@@ -877,7 +876,6 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 			return false;
 		}
 
-		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
@@ -899,7 +897,6 @@ bool setup_stack (struct intr_frame *if_) {
 	if (vm_alloc_page(VM_ANON | VM_MARKER_0, stack_bottom, 1)) {    // type, upage, writable
 		success = vm_claim_page(stack_bottom);
 		
-		// for stack growth
 		if (success) {
 			if_->rsp = USER_STACK;
             thread_current()->stack_bottom = stack_bottom;

@@ -53,10 +53,13 @@ struct page {
     bool writable;      // True일 경우 해당 주소에 write 가능. False일 경우 해당 주소에 write 불가능
     bool is_loaded;     // 물리 메모리의 탑재 여부를 알려주는 플래그
 
-    // /* Swapping 과제에서 다룰 예정*/
-    // size_t swap_slot;           /* 스왑슬롯*/
+    // Swapping 과제에서 다룰 예정
+    // size_t swap_slot;           	//스왑슬롯
 
-    struct hash_elem hash_elem;
+	// Memory Mapped Fiile에서 다룰 예정
+	// struct list_elem mmap_elem;	// mmap 리스트 element
+
+    struct hash_elem hash_elem;		// 해시 테이블 element
 
 	/* Per-type data are binded into the union.
 	 * Each function automatically detects the current union */
@@ -127,5 +130,6 @@ unsigned page_hash(const struct hash_elem *p_, void *aux UNUSED);
 bool page_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED);
 bool insert_page(struct hash *pages, struct page *p);
 bool delete_page(struct hash *pages, struct page *p);
+void spt_destructor(struct hash_elem *e, void* aux);
 
 #endif  /* VM_VM_H */

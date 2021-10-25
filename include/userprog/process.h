@@ -14,16 +14,17 @@ void process_activate (struct thread *next);
 void load_userStack(char **argv, int argc, void **rspp);
 // for VM
 bool install_page (void *upage, void *kpage, bool writable);
+bool lazy_load_segment (struct page *page, void *aux);
 // bool setup_stack (struct intr_frame *if_);
-// bool lazy_load_segment (struct page *page, void *aux);
+struct file *process_get_file(int fd);
 
 // project3 | lazy load를 위해 필요한 정보 구조체
 struct container {
     struct file *file;
-    size_t page_read_bytes;
-    bool writable;
-    off_t offset;
-    size_t file_len;
+    // bool writable;
+    // size_t file_len;
+    off_t offset;               // 읽어야 할 파일 오프셋
+    size_t page_read_bytes;     // 가상 페이지에 쓰여져 있는 데이터 크기
 };
 
 #endif /* userprog/process.h */

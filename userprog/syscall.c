@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "intrinsic.h"
-
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/palloc.h"
@@ -29,7 +28,8 @@ const int STDOUT = 2;
 
 int exec(char *file_name);
 tid_t fork(const char *thread_name, struct intr_frame *f);
-void check_address(uaddr);
+struct page * check_address(void *addr);
+void check_valid_buffer(void* buffer, unsigned size, void* rsp, bool to_write);
 void halt(void);
 void exit(int status);
 int wait(tid_t tid);
@@ -43,6 +43,8 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 int dup2(int oldfd, int newfd);
+void* mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+void munmap (void *addr);
 
 /* System call.
  *
@@ -75,6 +77,9 @@ syscall_init (void) {
 /* The main system call interface */
 void syscall_handler (struct intr_frame *f) {
 	// TODO: Your implementation goes here.
+#ifdef VM
+		thread_current()->rsp_stack = f->rsp;
+#endif
 
 	char *fn_copy;
 	int siz;
@@ -109,9 +114,11 @@ void syscall_handler (struct intr_frame *f) {
 		f->R.rax = filesize(f->R.rdi);
 		break;
 	case SYS_READ:
+		check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 1);
 		f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_WRITE:
+		check_valid_buffer(f->R.rsi, f->R.rdx, f->rsp, 0);
 		f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
 		break;
 	case SYS_SEEK:
@@ -126,13 +133,17 @@ void syscall_handler (struct intr_frame *f) {
 	case SYS_DUP2:
 		f->R.rax = dup2(f->R.rdi, f->R.rsi);
 		break;
+	 // for VM
+	case SYS_MMAP:
+		f->R.rax = mmap(f->R.rdi, f->R.rsi, f->R.rdx, f->R.r10, f->R.r8);
+		break;
+	case SYS_MUNMAP:
+		munmap(f->R.rdi);
+		break;
 	default:
 		exit(-1);
 		break;
 	}
-
-	// printf ("system call!\n");
-	// thread_exit ();
 }
 
 // pintos 프로그램 종료 
@@ -142,8 +153,12 @@ void halt(void) {
 
 // 파일 생성
 bool create(const char *file, unsigned initial_size) {
-	check_address(file);
-	return filesys_create(file, initial_size);
+	// check_address(file);
+	// return filesys_create(file, initial_size);
+	if (file)
+        return filesys_create(file,initial_size); // ASSERT, dir_add (name!=NULL)
+    else
+        exit(-1);
 }
 
 // 파일 삭제
@@ -152,13 +167,22 @@ bool remove(const char *file) {
 	return filesys_remove(file);
 }
 
-void check_address(const uint64_t *uaddr) {
+// page에 맞게 check_address 수정
+struct page * check_address(void *addr) {
+    if (is_kernel_vaddr(addr)) {
+        exit(-1);
+    }
+    return spt_find_page(&thread_current()->spt, addr);
+}
 
-	struct thread *cur = thread_current();
-	if	(uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4_get_page(cur->pml4, uaddr) == NULL) {
-		exit(-1);
-	}
-	return spt_find_page(&thread_current()->spt, uaddr);
+void check_valid_buffer(void* buffer, unsigned size, void* rsp, bool to_write) {
+    for (int i = 0; i < size; i++) {
+        struct page* page = check_address(buffer + i);    // 인자로 받은 buffer부터 buffer + size까지의 크기가 한 페이지의 크기를 넘을수도 있음
+        if(page == NULL)
+            exit(-1);
+        if(to_write == true && page->writable == false)
+            exit(-1);
+    }
 }
 
 void exit(int status)
@@ -199,14 +223,19 @@ int wait(tid_t tid){
 	return process_wait(tid);
 }
 
-//
 int open(const char *file) {
 	check_address(file);
+
+	// open_null 테스트 패스 위해
+	if (file == NULL) {
+		return -1;
+	}
+
 	struct file *fileobj = filesys_open(file);
 	// filesys_open()은 return file_open(inode) -> file_open()은 return file 이므로, 
 	// fileobj = 리턴 값으로 받은 file이 됨
 
-	if(fileobj == NULL)
+	if (fileobj == NULL)
 		return -1;
 
 	int fd = add_file_to_fdt(fileobj);
@@ -303,7 +332,6 @@ void remove_file_from_fdt(int fd) {
 }
 
 int read(int fd, void *buffer, unsigned size) {
-	check_address(buffer);
 	int ret;
 	struct thread *cur = thread_current();
 
@@ -344,7 +372,6 @@ int read(int fd, void *buffer, unsigned size) {
 }
 
 int write(int fd, const void *buffer, unsigned size) {
-	check_address(buffer);
 	int ret;
 
 	struct file *fileobj = find_file_by_fd(fd);
@@ -405,4 +432,41 @@ int dup2(int oldfd, int newfd)
 	close(newfd);
 	fdt[newfd] = fileobj;
 	return newfd;
+}
+
+// for Memory Mapped Files
+/*
+ * addr: 매핑을 시작할 주소(page 단위)
+ * fd: 프로세스의 가상 주소 공간에 매핑할 파일
+ * length: 매핑할 파일의 길이
+ */
+void *mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+
+    if (offset % PGSIZE != 0) {
+        return NULL;
+    }
+
+    if (pg_round_down(addr) != addr || is_kernel_vaddr(addr) || addr == NULL || (long long)length <= 0)
+        return NULL;
+    
+    if (fd == 0 || fd == 1)
+        exit(-1);
+    
+    // vm_overlap
+    if (spt_find_page(&thread_current()->spt, addr))
+        return NULL;
+
+    struct file *target = process_get_file(fd);
+	// struct file *target = find_file_by_fd(fd);
+
+    if (target == NULL)
+        return NULL;
+
+    void * ret = do_mmap(addr, length, writable, target, offset);
+
+    return ret;
+}
+
+void munmap (void *addr) {
+    do_munmap(addr);
 }
