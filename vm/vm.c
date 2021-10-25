@@ -114,8 +114,7 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 }
 
 /* Get the struct frame, that will be evicted. */
-static struct frame *
-vm_get_victim (void) {
+static struct frame * vm_get_victim (void) {
 	struct frame *victim = NULL;
     /* TODO: The policy for eviction is up to you. */
     struct thread *curr = thread_current();
@@ -162,8 +161,7 @@ static struct frame * vm_get_frame (void) {
 	struct frame *frame = (struct frame*)malloc(sizeof(struct frame));
 	
 	frame->kva = palloc_get_page(PAL_USER);
-    if(frame->kva == NULL)
-    {
+    if(frame->kva == NULL) {
         frame = vm_evict_frame();
         frame->page = NULL;
 
