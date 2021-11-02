@@ -138,6 +138,9 @@ struct thread {
 	struct supplemental_page_table spt;
 	void *stack_bottom;
 	void* rsp_stack;
+
+	// directory 표시
+	struct dir *cur_dir;
 #endif
 
 	/* Owned by thread.c. */

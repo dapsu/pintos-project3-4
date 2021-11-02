@@ -410,8 +410,7 @@ int process_wait (tid_t child_tid UNUSED) {
 }
 
 /* Exit the process. This function is called by thread_exit (). */
-void
-process_exit (void) {
+void process_exit (void) {
 	struct thread *cur = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
@@ -436,6 +435,10 @@ process_exit (void) {
 	// Postpone child termination until parents receives its exit status with 'wait'
 	// 부모 프로세스가 sema_up(free_sema)할 때까지 기다림(block 상태 진입)
 	sema_down(&cur->free_sema);
+
+	#ifdef EFILESYS
+    dir_close(thread_current()->cur_dir); // 스레드의 현재 작업 디렉터리의 정보 메모리에서 해지
+    #endif
 }
 
 /* Free the current process's resources. */
@@ -872,7 +875,6 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		container->file = file;
 		container->page_read_bytes = page_read_bytes;
 		container->offset = ofs;
-		// container->writable = writable;
 
 		if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, container)) {
 			return false;

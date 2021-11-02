@@ -62,10 +62,9 @@ free_map_close (void) {
 
 /* Creates a new free map file on disk and writes the free map to
  * it. */
-void
-free_map_create (void) {
+void free_map_create (void) {
 	/* Create inode. */
-	if (!inode_create (FREE_MAP_SECTOR, bitmap_file_size (free_map)))
+	if (!inode_create (FREE_MAP_SECTOR, bitmap_file_size (free_map), 0))
 		PANIC ("free map creation failed");
 
 	/* Write bitmap to file. */

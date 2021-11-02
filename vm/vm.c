@@ -178,8 +178,7 @@ static struct frame * vm_get_frame (void) {
 
 /* Growing the stack. */
 static void vm_stack_growth (void *addr UNUSED) {
-    if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1))
-    {
+    if(vm_alloc_page(VM_ANON | VM_MARKER_0, addr, 1)) {
         vm_claim_page(addr);
         thread_current()->stack_bottom -= PGSIZE;   // 스택은 위에서부터 쌓기 때문에 주소값 위치를 페이지 사이즈씩 마이너스함
     }

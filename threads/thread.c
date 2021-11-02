@@ -96,8 +96,7 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
    It is not safe to call thread_current() until this function
    finishes. */
-void
-thread_init (void) {
+void thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 
 	/* Reload the temporal gdt for the kernel
@@ -122,6 +121,10 @@ thread_init (void) {
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
+
+	#ifdef EFILESYS
+    initial_thread->cur_dir = NULL;
+    #endif
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -183,8 +186,7 @@ thread_print_stats (void) {
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
-tid_t
-thread_create (const char *name, int priority,
+tid_t thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
 	struct thread *t;
 	tid_t tid;
@@ -212,6 +214,13 @@ thread_create (const char *name, int priority,
 	t->stdout_count = 1; 
 
 	tid = t->tid = allocate_tid ();
+
+	// 자식 스레드의 작업 디렉터리를 부모 스레드의 작업 디렉터리로 디렉터리 다시 오픈하여 설정
+	#ifdef EFILESYS
+    if(thread_current()->cur_dir != NULL) {
+        t->cur_dir = dir_reopen(thread_current()->cur_dir); 
+    }
+    #endif
 
 	// 현재 스레드의 child_list에 넣기
 	struct thread *cur = thread_current();
